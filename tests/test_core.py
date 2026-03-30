@@ -1,6 +1,5 @@
 """Tests for envgate.core."""
 
-
 import pytest
 
 from envgate.core import get_env, validate
