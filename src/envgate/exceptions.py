@@ -62,3 +62,33 @@ class InvalidEnvVarError(EnvGateError):
             f"Environment variable '{var_name}' has invalid value "
             f"'{value}' (expected {expected_type})."
         )
+
+
+class ValidationError(EnvGateError):
+    """Raised when multiple environment variables fail validation.
+    
+    Collects all individual errors so the user can fix everything
+    in a single pass instead of playing whack-a-mole.
+
+    Attributes:
+        errors: A list of individual :class:`MissingEnvVarError` and/or
+            :class:`InvalidEnvVarError` instances.
+
+    Examples:
+        >>> errors = [
+        ...     MissingEnvVarError("DATABASE_URL"),
+        ...     InvalidEnvVarError("PORT", "abc", "int")
+        ... ]
+        >>> exc = ValidationError(errors)
+        >>> len(exc.errors)
+        2
+        >>> print(exc)
+        Environment validation failed:
+            - Environment variable 'DATABASE_URL' is not set.
+            - Environment variable 'PORT' has invalid value 'abc' (expected int).
+    """
+
+    def __init__(self, errors: list[EnvGateError]) -> None:
+        self.errors = errors
+        details = "\n".join(f"    - {e}" for e in errors)
+        super().__init__(f"Environment validation failed:\n{details}")

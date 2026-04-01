@@ -1,9 +1,14 @@
 """Tests for envgate.core."""
 
 import pytest
+import os
 
 from envgate.core import get_env, validate
-from envgate.exceptions import InvalidEnvVarError, MissingEnvVarError
+from envgate.exceptions import (
+    InvalidEnvVarError, 
+    MissingEnvVarError, 
+    ValidationError
+)
 
 
 @pytest.fixture(autouse=True)
@@ -90,13 +95,86 @@ class TestValidate:
         assert result == {"HOST": "localhost", "DEBUG": False}
 
     def test_raises_on_missing_required(self):
-        with pytest.raises(MissingEnvVarError):
+        with pytest.raises(ValidationError) as exc_info:
             validate({"HOST": {"type": "str"}})
+        assert len(exc_info.value.errors) == 1
+        assert isinstance(exc_info.value.errors[0], MissingEnvVarError)
 
     def test_raises_on_invalid_value(self, monkeypatch):
         monkeypatch.setenv("PORT", "abc")
-        with pytest.raises(InvalidEnvVarError):
+        with pytest.raises(ValidationError) as exc_info:
             validate({"PORT": {"type": "int"}})
+        assert len(exc_info.value.errors) == 1
+        assert isinstance(exc_info.value.errors[0], InvalidEnvVarError)
 
     def test_empty_schema(self):
         assert validate({}) == {}
+
+
+class TestValidationCollectsAllErrors:
+    """Tests for issue #3 — validate() reports all errors at once."""
+
+    def test_multiple_missing(self):
+        schema = {
+            "DB_URL": {"type": "str"},
+            "REDIS_URL": {"type": "str"},
+            "SECRET_KEY": {"type": "str"},
+        }
+        with pytest.raises(ValidationError) as exc_info:
+            validate(schema)
+
+        assert len(exc_info.value.errors) == 3
+        assert all(
+            isinstance(e, MissingEnvVarError) for e in exc_info.value.errors
+        )
+
+    def test_multiple_invalid(self, monkeypatch):
+        monkeypatch.setenv("PORT", "abc")
+        monkeypatch.setenv("TIMEOUT", "xyz")
+
+        schema = {
+            "PORT": {"type": "int"},
+            "TIMEOUT": {"type": "float"},
+        }
+        with pytest.raises(ValidationError) as exc_info:
+            validate(schema)
+
+        assert len(exc_info.value.errors) == 2
+        assert all(
+            isinstance(e, InvalidEnvVarError) for e in exc_info.value.errors
+        )
+
+    def test_mixed_missing_and_invalid(self, monkeypatch):
+        monkeypatch.setenv("PORT", "not_a_number")
+
+        schema = {
+            "DB_URL": {"type": "str"},
+            "PORT": {"type": "int"},
+        }
+        with pytest.raises(ValidationError) as exc_info:
+            validate(schema)
+
+        errors = exc_info.value.errors
+        assert len(errors) == 2
+        assert isinstance(errors[0], MissingEnvVarError)
+        assert isinstance(errors[1], InvalidEnvVarError)
+
+    def test_error_message_lists_all(self, monkeypatch):
+        monkeypatch.setenv("PORT", "abc")
+
+        schema = {
+            "DB_URL": {"type": "str"},
+            "PORT": {"type": "int"},
+        }
+        with pytest.raises(ValidationError, match="Environment validation failed"):
+            validate(schema)
+
+    def test_no_errors_returns_normally(self, monkeypatch):
+        monkeypatch.setenv("HOST", "localhost")
+        monkeypatch.setenv("PORT", "5432")
+
+        result = validate({
+            "HOST": {"type": "str"},
+            "PORT": {"type": "int"},
+        })
+        assert result == {"HOST": "localhost", "PORT": 5432}
