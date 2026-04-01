@@ -13,10 +13,10 @@ Example:
 
 from envgate.core import get_env, validate
 from envgate.exceptions import (
-    EnvGateError, 
-    InvalidEnvVarError, 
+    EnvGateError,
+    InvalidEnvVarError,
     MissingEnvVarError,
-    ValidationError
+    ValidationError,
 )
 
 

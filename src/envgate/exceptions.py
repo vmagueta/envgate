@@ -66,7 +66,7 @@ class InvalidEnvVarError(EnvGateError):
 
 class ValidationError(EnvGateError):
     """Raised when multiple environment variables fail validation.
-    
+
     Collects all individual errors so the user can fix everything
     in a single pass instead of playing whack-a-mole.
 

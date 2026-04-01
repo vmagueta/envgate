@@ -1,14 +1,9 @@
 """Tests for envgate.core."""
 
 import pytest
-import os
 
 from envgate.core import get_env, validate
-from envgate.exceptions import (
-    InvalidEnvVarError, 
-    MissingEnvVarError, 
-    ValidationError
-)
+from envgate.exceptions import InvalidEnvVarError, MissingEnvVarError, ValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -124,9 +119,7 @@ class TestValidationCollectsAllErrors:
             validate(schema)
 
         assert len(exc_info.value.errors) == 3
-        assert all(
-            isinstance(e, MissingEnvVarError) for e in exc_info.value.errors
-        )
+        assert all(isinstance(e, MissingEnvVarError) for e in exc_info.value.errors)
 
     def test_multiple_invalid(self, monkeypatch):
         monkeypatch.setenv("PORT", "abc")
@@ -140,9 +133,7 @@ class TestValidationCollectsAllErrors:
             validate(schema)
 
         assert len(exc_info.value.errors) == 2
-        assert all(
-            isinstance(e, InvalidEnvVarError) for e in exc_info.value.errors
-        )
+        assert all(isinstance(e, InvalidEnvVarError) for e in exc_info.value.errors)
 
     def test_mixed_missing_and_invalid(self, monkeypatch):
         monkeypatch.setenv("PORT", "not_a_number")
@@ -173,8 +164,10 @@ class TestValidationCollectsAllErrors:
         monkeypatch.setenv("HOST", "localhost")
         monkeypatch.setenv("PORT", "5432")
 
-        result = validate({
-            "HOST": {"type": "str"},
-            "PORT": {"type": "int"},
-        })
+        result = validate(
+            {
+                "HOST": {"type": "str"},
+                "PORT": {"type": "int"},
+            }
+        )
         assert result == {"HOST": "localhost", "PORT": 5432}

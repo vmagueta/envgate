@@ -10,9 +10,10 @@ import os
 from typing import Any
 
 from envgate.exceptions import (
-    InvalidEnvVarError, 
-    MissingEnvVarError, 
-    ValidationError
+    EnvGateError,
+    InvalidEnvVarError,
+    MissingEnvVarError,
+    ValidationError,
 )
 from envgate.types import COERCIONS
 
