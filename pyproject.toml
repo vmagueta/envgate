@@ -1,6 +1,6 @@
 [project]
 name = "envgate"
-version = "0.2.0"
+version = "0.3.0"
 description = "A minimal Python library to validate environment variables at startup. Zero dependencies."
 readme = "README.md"
 authors = [

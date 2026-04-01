@@ -4,6 +4,7 @@ from envgate.exceptions import (
     EnvGateError,
     InvalidEnvVarError,
     MissingEnvVarError,
+    ValidationError,
 )
 
 
@@ -56,6 +57,37 @@ class TestInvalidEnvVarError:
         with_caught = False
         try:
             raise InvalidEnvVarError("X", "y", "int")
+        except EnvGateError:
+            with_caught = True
+        assert with_caught
+
+
+class TestValidationError:
+    """Tests for ValidationError."""
+
+    def test_inherits_from_base(self):
+        assert issubclass(ValidationError, EnvGateError)
+
+    def test_errors_attribute(self):
+        errors = [MissingEnvVarError("A"), MissingEnvVarError("B")]
+        exc = ValidationError(errors)
+        assert exc.errors is errors
+        assert len(exc.errors) == 2
+
+    def test_message(self):
+        errors = [
+            MissingEnvVarError("DB_URL"),
+            InvalidEnvVarError("PORT", "abc", "int"),
+        ]
+        exc = ValidationError(errors)
+        assert "Environment validation failed:" in str(exc)
+        assert "DB_URL" in str(exc)
+        assert "PORT" in str(exc)
+
+    def test_catchable_by_base(self):
+        with_caught = False
+        try:
+            raise ValidationError([MissingEnvVarError("X")])
         except EnvGateError:
             with_caught = True
         assert with_caught

@@ -37,10 +37,13 @@ config = validate({
 })
 ```
 
-If `DATABASE_URL` is missing:
+If `DATABASE_URL` and `REDIS_URL` are missing and `PORT` is invalid, you get all errors at once:
 
 ```
-envgate.exceptions.MissingEnvVarError: Environment variable 'DATABASE_URL' is not set.
+envgate.exceptions.ValidationError: Environment validation failed:
+    - Environment variable 'DATABASE_URL' is not set.
+    - Environment variable 'REDIS_URL' is not set.
+    - Environment variable 'PORT' has invalid value 'abc' (expected int).
 ```
 
 ## Supported Types
