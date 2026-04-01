@@ -12,7 +12,13 @@ Example:
 """
 
 from envgate.core import get_env, validate
-from envgate.exceptions import EnvGateError, InvalidEnvVarError, MissingEnvVarError
+from envgate.exceptions import (
+    EnvGateError,
+    InvalidEnvVarError,
+    MissingEnvVarError,
+    ValidationError,
+)
+
 
 __all__ = [
     "get_env",
@@ -20,4 +26,5 @@ __all__ = [
     "EnvGateError",
     "InvalidEnvVarError",
     "MissingEnvVarError",
+    "ValidationError",
 ]

@@ -9,7 +9,12 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from envgate.exceptions import InvalidEnvVarError, MissingEnvVarError
+from envgate.exceptions import (
+    EnvGateError,
+    InvalidEnvVarError,
+    MissingEnvVarError,
+    ValidationError,
+)
 from envgate.types import COERCIONS
 
 # Sentinel object to distinguish "no default provided" from None.
@@ -100,8 +105,8 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
         A dictionary of variable names to their validated values.
 
     Raises:
-        MissingEnvVarError: If any required variable is not set.
-        InvalidEnvVarError: If any value fails type coercion.
+        ValidationError: If any required variable is not set
+            or if any value fails type coercion.
 
     Examples:
         >>> import os
@@ -116,6 +121,16 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
         >>> result == {"HOST": "localhost", "PORT": 5432, "DEBUG": False}
         True
     """
-    return {
-        var_name: get_env(var_name, **options) for var_name, options in schema.items()
-    }
+    result: dict[str, Any] = {}
+    errors: list[EnvGateError] = []
+
+    for var_name, options in schema.items():
+        try:
+            result[var_name] = get_env(var_name, **options)
+        except (MissingEnvVarError, InvalidEnvVarError) as e:
+            errors.append(e)
+
+    if errors:
+        raise ValidationError(errors)
+
+    return result
