@@ -171,3 +171,31 @@ class TestValidationCollectsAllErrors:
             }
         )
         assert result == {"HOST": "localhost", "PORT": 5432}
+
+
+class TestRequiredFlag:
+    """Tests for issue #4 — explicit required flag."""
+
+    def test_required_true_raises_when_missing(self):
+        with pytest.raises(MissingEnvVarError) as exc_info:
+            get_env("TEST_VAR", required=True)
+        assert exc_info.value.var_name == "TEST_VAR"
+
+    def test_required_true_with_default_raises_value_error(self):
+        with pytest.raises(ValueError, match="Cannot combine required"):
+            get_env("TEST_VAR", required=True, default="X")
+
+    def test_required_true_with_default_raises_even_when_var_is_set(self, monkeypatch):
+        monkeypatch.setenv("TEST_VAR", "abc")
+        with pytest.raises(ValueError, match="Cannot combine required"):
+            get_env("TEST_VAR", required=True, default="abc")
+
+    def test_required_false_without_default_returns_none(self):
+        assert get_env("TEST_VAR", required=False) is None
+
+    def test_required_false_with_default_returns_default(self):
+        assert get_env("TEST_VAR", required=False, default="fallback") == "fallback"
+
+    def test_value_error_message_mentions_var_name(self):
+        with pytest.raises(ValueError, match=r"'CUSTOM_VAR'"):
+            get_env("CUSTOM_VAR", required=True, default="X")

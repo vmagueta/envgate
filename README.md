@@ -28,6 +28,9 @@ from envgate import get_env, validate
 port = get_env("PORT", type="int", default=8000)
 debug = get_env("DEBUG", type="bool", default=False)
 
+# Explicitly mark a variable as required
+api_key = get_env("API_KEY", required=True)
+
 # Or validate multiple variables at once
 config = validate({
     "DATABASE_URL": {"type": "str"},
