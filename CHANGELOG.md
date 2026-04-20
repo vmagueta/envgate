@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-04-20
+
+### Added
+- Explicit `required` flag in `get_env` and `validate` schemas,
+  with tri-state semantics: `True` (must be set), `False` (optional,
+  returns `None` if absent), or `None` (default — inferred from `default`).
+- `get_env` now raises `ValueError` when `required=True` is combined
+  with a `default` value (contradictory schema).
+- `required=False` without a `default` now returns `None` instead of
+  raising `MissingEnvVarError`.
+
+### Changed
+- Schema validation for the `required`/`default` contradiction happens
+  eagerly at the top of `get_env`, before consulting `os.environ`, so
+  schema bugs surface even when the variable is set.
+
 ## [0.3.0] - 2026-04-01
 
 ### Added
