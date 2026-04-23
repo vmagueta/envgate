@@ -7,6 +7,7 @@ from envgate.types import (
     coerce_bool,
     coerce_float,
     coerce_int,
+    coerce_list,
     coerce_str,
 )
 
@@ -98,3 +99,67 @@ class TestCoercionsDict:
         assert COERCIONS["int"] is coerce_int
         assert COERCIONS["float"] is coerce_float
         assert COERCIONS["bool"] is coerce_bool
+
+
+class TestCoerceList:
+    """Tests for coerce_list (issue #5)."""
+
+    def test_simple_string_list(self):
+        values, failed = coerce_list("a,b,c", "str", ",")
+        assert values == ["a", "b", "c"]
+        assert failed == []
+
+    def test_int_list(self):
+        values, failed = coerce_list("1,2,3", "int", ",")
+        assert values == [1, 2, 3]
+        assert failed == []
+
+    def test_float_list(self):
+        values, failed = coerce_list("1.5,2.5,3.5", "float", ",")
+        assert values == [1.5, 2.5, 3.5]
+        assert failed == []
+
+    def test_bool_list(self):
+        values, failed = coerce_list("true,false,yes,no", "bool", ",")
+        assert values == [True, False, True, False]
+        assert failed == []
+
+    def test_custom_separator(self):
+        values, failed = coerce_list("a:b:c", "str", ":")
+        assert values == ["a", "b", "c"]
+        assert failed == []
+
+    def test_strip_whitespace_around_items(self):
+        values, failed = coerce_list(" a , b , c ", "str", ",")
+        assert values == ["a", "b", "c"]
+        assert failed == []
+
+    def test_failed_items_collected_with_indices(self):
+        values, failed = coerce_list("1,abc,3,xyz,5", "int", ",")
+        assert values == [1, 3, 5]
+        assert failed == [(1, "abc"), (3, "xyz")]
+
+    def test_empty_string_rejected(self):
+        values, failed = coerce_list("", "int", ",")
+        assert values == []
+        assert failed == [(0, "")]
+
+    def test_empty_item_in_middle_rejected(self):
+        values, failed = coerce_list("a,,b", "str", ",")
+        assert values == ["a", "b"]
+        assert failed == [(1, "")]
+
+    def test_trailing_empty_rejected(self):
+        values, failed = coerce_list("a,b,", "str", ",")
+        assert values == ["a", "b"]
+        assert failed == [(2, "")]
+
+    def test_leading_empty_rejected(self):
+        values, failed = coerce_list(",a,b", "str", ",")
+        assert values == ["a", "b"]
+        assert failed == [(0, "")]
+
+    def test_all_invalid_coercion(self):
+        values, failed = coerce_list("a,b,c", "int", ",")
+        assert values == []
+        assert failed == [(0, "a"), (1, "b"), (2, "c")]

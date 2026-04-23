@@ -31,6 +31,10 @@ debug = get_env("DEBUG", type="bool", default=False)
 # Explicitly mark a variable as required
 api_key = get_env("API_KEY", required=True)
 
+# Parse comma-separated lists (or use a custom separator)
+hosts = get_env("ALLOWED_HOSTS", type="list")            # ["a", "b", "c"]
+ports = get_env("PORTS", type="list[int]", sep=":")      # [8000, 8001]
+
 # Or validate multiple variables at once
 config = validate({
     "DATABASE_URL": {"type": "str"},
@@ -57,6 +61,7 @@ envgate.exceptions.ValidationError: Environment validation failed:
 | `int` | `"42"`, `"-7"`, `"0"` |
 | `float` | `"3.14"`, `"42"`, `"-2.5"` |
 | `bool` | `"true"`, `"1"`, `"yes"`, `"on"` / `"false"`, `"0"`, `"no"`, `"off"` |
+| `list`, `list[str]`, `list[int]`, `list[float]`, `list[bool]` | Comma-separated values — e.g. `"a,b,c"` → `["a", "b", "c"]`. Pass `sep=":"` (or any character) to override the separator. |
 
 ## Contributing
 
