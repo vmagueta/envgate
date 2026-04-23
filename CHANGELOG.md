@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+
+## [0.4.1] - 2026-04-23
+
+### Changed
+- Docstring examples in `get_env` and `validate` are now illustrative
+  (plain text, no `>>>` prompts). Their behavior remains covered by
+  unit tests in `tests/`.
+- CI now executes doctests for pure modules via `pytest --doctest-modules`.
+  Previously, docstring examples could silently drift from the API.
+
 ## [0.4.0] - 2026-04-20
 
 ### Added
