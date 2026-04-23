@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 
+
+## [0.5.0] - 2026-04-23
+
+### Added
+- New `list` type for comma-separated environment variables. Supports
+  `list` (alias for `list[str]`), `list[str]`, `list[int]`, `list[float]`,
+  and `list[bool]`.
+- `sep` parameter on `get_env` (keyword-only, default `","`), usable
+  within `validate` schemas. Only applies to list types — passing `sep`
+  with a scalar type raises `ValueError`.
+- When multiple items within a list fail coercion, all errors are
+  collected and reported together in a single `InvalidEnvVarError`,
+  consistent with the collective validation behavior from v0.3.
+- List defaults are returned as copies, preventing mutations on
+  returned values from leaking back into shared schemas.
+
 ## [0.4.1] - 2026-04-23
 
 ### Changed

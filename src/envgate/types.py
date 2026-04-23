@@ -96,6 +96,63 @@ def coerce_bool(value: str) -> bool | None:
     return None
 
 
+def coerce_list(
+    raw: str,
+    item_type: str,
+    sep: str = ",",
+) -> tuple[list, list[tuple[int, str]]]:
+    """Split a string on ``sep``, strip whitespace, and coerce each item.
+
+    Rejects empty items, both the whole string being empty and empty
+    items between separatores (e.g. ``"a,,b"``).
+
+    Args:
+        raw: The full raw string to split.
+        item_type: One of ``"str"``, ``"int"``, ``""float"``, ``""bool"``.
+            Must be a key in ``COERCIONS``.
+        sep: The separator character. Defaults to ``","``.
+
+    Returns:
+        A tuple ``(values, failed)``.
+        ``values`` is the list of successfully coerced items in order.
+        ``failed`` is a list of ``(index, raw_item)`` for items that
+        couldn't be coerced (including empty items). If ``failed`` is
+        non-empty, the caller should raise ``InvalidEnvVarError`` with
+        ``items_info=failed``.
+
+    Examples:
+        Happy path:
+            coerce_list("1,2,3", "int", ",")
+            # ([1, 2, 3], [])
+
+        With failures:
+            coerce_list("1,abc,3", "int", ",")
+            # ([1, 3], [(1, "abc")])
+
+        Empty items rejected:
+            coerce_list("a,,b", "str", ",")
+            # (["a", "b"], [(1, "")])
+    """
+    item_coerce = COERCIONS[item_type]
+    items = [x.strip() for x in raw.split(sep)]
+
+    values: list = []
+    failed: list[tuple[int, str]] = []
+
+    for idx, item in enumerate(items):
+        if item == "":
+            failed.append((idx, item))
+            continue
+
+        result = item_coerce(item)
+        if result is None and item_type != "str":
+            failed.append((idx, item))
+        else:
+            values.append(result)
+
+    return (values, failed)
+
+
 # Maps type names to their coercion functions.
 # Used by core.py to look up the right converter.
 COERCIONS: dict[str, callable] = {
