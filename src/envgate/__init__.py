@@ -9,6 +9,7 @@ Example:
     >>> from envgate import get_env
     >>> get_env("PORT", type="int")
     8080
+    >>> del os.environ["PORT"]
 """
 
 from envgate.core import get_env, validate

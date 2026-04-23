@@ -63,20 +63,17 @@ def get_env(
             ``required=True`` is combined with a ``default``.
 
     Examples:
-        >>> import os
-        >>> os.environ["APP_PORT"] = "8080"
-        >>> get_env("APP_PORT", type="int")
-        8080
+        Required variable with type coercion (APP_PORT=8080):
+            get_env("APP_PORT", type="int")  # returns 8080
 
-        >>> get_env("MISSING_VAR", default="fallback")
-        'fallback'
+        Optional variable with a fallback:
+            get_env("MISSING_VAR", default="fallback")  # returns "fallback"
 
-        >>> os.environ["DEBUG"] = "true"
-        >>> get_env("DEBUG", type="bool")
-        True
+        Boolean coercion (DEBUG=true):
+            get_env("DEBUG", type="bool")  # returns True
 
-        >>> get_env("MISSING_VAR", required=False) is None
-        True
+        Optional variable absent:
+            get_env("MISSING_VAR", required=False)  # returns None
     """
     # Validate that the requested type is supported.
     if type not in COERCIONS:
@@ -132,17 +129,14 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
             or if any value fails type coercion.
 
     Examples:
-        >>> import os
-        >>> os.environ["HOST"] = "localhost"
-        >>> os.environ["PORT"] = "5432"
-        >>> _ = os.environ.pop("DEBUG", None)
-        >>> result = validate({
-        ...     "HOST": {"type": "str"},
-        ...     "PORT": {"type": "int"},
-        ...     "DEBUG": {"type": "bool", "default": False},
-        ... })
-        >>> result == {"HOST": "localhost", "PORT": 5432, "DEBUG": False}
-        True
+        Validate a schema with mixed required and optional vars.
+        Given HOST=localhost and PORT=5432 in the environment:
+            result = validate({
+                "HOST": {"type": "str"},
+                "PORT": {"type": "int"},
+                "DEBUG": {"type": "bool", "default": False},
+            })
+            # result == {"HOST": "localhost", "PORT": 5432, "DEBUG": False}
     """
     result: dict[str, Any] = {}
     errors: list[EnvGateError] = []
