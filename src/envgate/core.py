@@ -7,6 +7,7 @@ with type coercion and optional defaults.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from typing import Any
 
 from envgate.exceptions import (
@@ -60,6 +61,30 @@ def _parse_list_type(type_str: str) -> tuple[bool, str]:
     return (True, inner)
 
 
+def _run_validator(
+    validator: Callable[[Any], Any],
+    var_name: str,
+    value: Any,
+    expected_type: str,
+) -> None:
+    """Run a user-supplied validator and convert raises into ``InvalidEnvVarError``.
+
+    The validator's return value is intentionally ignored — validators
+    signal failure by raising. Any exception is caught and re-raised
+    as ``InvalidEnvVarError`` with the exception's message as ``reason``,
+    so the failure participates in the collective ``ValidationError``.
+    """
+    try:
+        validator(value)
+    except Exception as exc:
+        raise InvalidEnvVarError(
+            var_name,
+            value=str(value),
+            expected_type=expected_type,
+            reason=str(exc),
+        ) from exc
+
+
 def get_env(
     var_name: str,
     *,
@@ -67,6 +92,7 @@ def get_env(
     default: Any = _MISSING,
     required: bool | None = None,
     sep: Any = _MISSING,
+    validator: Callable[[Any], Any] | None = None,
 ) -> Any:
     """Retrieve and validate a single environment variable.
 
@@ -94,6 +120,13 @@ def get_env(
         sep: Separator used to split list values. Defaults to ``","``.
             Only applicable when ``type`` is a list type; passing
             ``sep`` with a scalar type raises ``ValueError``.
+        validator: Optional callable applied to the coerced value
+            (or the default) to enforce value-level constraints —
+            ranges, allowed sets, regex matches, etc. Signal failure
+            by raising any exception; its ``str(exc)`` becomes the
+            error message. The return value is ignored. Not invoked
+            when the variable is optional, absent, and no default is
+            provided (the function returns ``None`` in that case).
 
     Returns:
         The coerced value, the default if the variable is not set,
@@ -103,8 +136,9 @@ def get_env(
         MissingEnvVarError: If the variable is not set, is required,
             and no default is provided.
         InvalidEnvVarError: If the value cannot be coerced to the
-            requested type. For list types, aggregates all invalid
-            items into a single error via ``items_info``.
+            requested type, or if ``validator`` rejects it. For list
+            types, type coercion aggregates all invalid items into
+            a single error via ``items_info``.
         ValueError: If ``type`` is not supported, if ``required=True``
             is combined with a ``default``, or if ``sep`` is passed
             with a non-list ``type``.
@@ -133,6 +167,13 @@ def get_env(
         List with Python default (TAGS unset):
             get_env("TAGS", type="list", default=["a", "b"])
             # returns ["a", "b"]
+
+        Custom validator (PORT=8080):
+            def check_port(p):
+                if not (1024 <= p <= 65535):
+                    raise ValueError("must be in [1024, 65535]")
+            get_env("PORT", type="int", validator=check_port)
+            # returns 8080
     """
     # Parse the type — detects list[X] forms and validates inner type.
     is_list, item_type = _parse_list_type(type)
@@ -164,8 +205,16 @@ def get_env(
         if default is not _MISSING:
             # Copy list defaults to prevent shared-schema mutations.
             if is_list and isinstance(default, list):
-                return list(default)
-            return default
+                value = list(default)
+            else:
+                value = default
+            # Validator enforces the schema contract on defaults too:
+            # a default that violates the validator is a schema bug,
+            # and surfacing it eagerly beats discovering it only when
+            # the env var happens to be absent in production.
+            if validator is not None:
+                _run_validator(validator, var_name, value, type)
+            return value
         elif required is False:
             return None
         else:
@@ -176,13 +225,18 @@ def get_env(
         values, failed = coerce_list(raw_value, item_type, effective_sep)
         if failed:
             raise InvalidEnvVarError(var_name, raw_value, type, items_info=failed)
-        return values
+        result = values
+    else:
+        coerce = COERCIONS[type]
+        result = coerce(raw_value)
+        if result is None:
+            raise InvalidEnvVarError(var_name, raw_value, type)
 
-    # Scalar path.
-    coerce = COERCIONS[type]
-    result = coerce(raw_value)
-    if result is None:
-        raise InvalidEnvVarError(var_name, raw_value, type)
+    # Validator runs on the successfully coerced value, and only then —
+    # we never invoke it on a failed coercion (the type error already
+    # tells the user what's wrong).
+    if validator is not None:
+        _run_validator(validator, var_name, result, type)
     return result
 
 
@@ -191,17 +245,23 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
     Takes a schema dictionary where each key is a variable name
     and each value is a dict of options passed to :func:`get_env`.
+    All failures — missing variables, type coercion errors, and
+    validator rejections — are collected and reported together via
+    :class:`ValidationError`, so the user can fix every problem in
+    a single pass.
 
     Args:
         schema: A mapping of variable names to their validation
-            options (``type``, ``default``, ``required``).
+            options (``type``, ``default``, ``required``, ``sep``,
+            ``validator``).
 
     Returns:
         A dictionary of variable names to their validated values.
 
     Raises:
-        ValidationError: If any required variable is not set
-            or if any value fails type coercion.
+        ValidationError: If any required variable is not set, any
+            value fails type coercion, or any value is rejected by
+            its ``validator``.
 
     Examples:
         Validate a schema with mixed required and optional vars.
@@ -212,6 +272,24 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
                 "DEBUG": {"type": "bool", "default": False},
             })
             # result == {"HOST": "localhost", "PORT": 5432, "DEBUG": False}
+
+        Schema with custom validators (value-level constraints):
+            def in_port_range(p):
+                if not (1024 <= p <= 65535):
+                    raise ValueError("must be in [1024, 65535]")
+
+            def is_known_level(level):
+                if level not in {"debug", "info", "warning", "error"}:
+                    raise ValueError("must be one of debug|info|warning|error")
+
+            result = validate({
+                "PORT": {"type": "int", "validator": in_port_range},
+                "LOG_LEVEL": {
+                    "type": "str",
+                    "default": "info",
+                    "validator": is_known_level,
+                },
+            })
     """
     result: dict[str, Any] = {}
     errors: list[EnvGateError] = []

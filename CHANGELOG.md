@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 
 
+## [0.6.0] - 2026-05-11
+
+### Added
+- `validator` option in `get_env` and `validate` schemas. Accepts a
+  callable that receives the coerced value and signals failure by
+  raising any exception. The exception's `str(exc)` becomes the error
+  message, joined into the collective `ValidationError` alongside
+  missing-variable and coercion errors.
+- `InvalidEnvVarError` now carries an optional `reason` attribute
+  (set when the error came from a validator) and adapts its message
+  accordingly: `"Environment variable 'PORT' has invalid value '80':
+  must be in [1024, 65535]"`.
+
+### Behavior notes
+- Validators run **after** type coercion, so they see the typed value
+  (e.g. `int`, `list[int]`) rather than the raw string.
+- Validators also run on `default` values — a default that violates
+  the validator is a schema bug, surfaced eagerly instead of waiting
+  for the variable to be absent in production.
+- Validators are **not** invoked when the variable is optional, absent,
+  and no default is provided (the function returns `None`).
+- Coercion failures short-circuit before the validator runs.
+
 ## [0.5.0] - 2026-04-23
 
 ### Added

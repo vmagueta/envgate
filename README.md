@@ -53,6 +53,37 @@ envgate.exceptions.ValidationError: Environment validation failed:
     - Environment variable 'PORT' has invalid value 'abc' (expected int).
 ```
 
+## Custom validators
+
+Type coercion checks that `PORT` is an integer. A `validator` checks that
+the value also makes sense — e.g. that the port is in a usable range, or
+that a log level is one of a fixed set:
+
+```python
+def in_port_range(p):
+    if not (1024 <= p <= 65535):
+        raise ValueError("must be in [1024, 65535]")
+
+def is_known_level(level):
+    if level not in {"debug", "info", "warning", "error"}:
+        raise ValueError("must be one of debug|info|warning|error")
+
+config = validate({
+    "PORT": {"type": "int", "validator": in_port_range},
+    "LOG_LEVEL": {"type": "str", "default": "info", "validator": is_known_level},
+})
+```
+
+A validator signals failure by raising any exception — its message is
+captured and joined into the same collective `ValidationError` as missing
+and invalid-type errors:
+
+```
+envgate.exceptions.ValidationError: Environment validation failed:
+    - Environment variable 'PORT' has invalid value '80': must be in [1024, 65535]
+    - Environment variable 'LOG_LEVEL' has invalid value 'verbose': must be one of debug|info|warning|error
+```
+
 ## Supported Types
 
 | Type | Example values |

@@ -41,9 +41,14 @@ class MissingEnvVarError(EnvGateError):
 class InvalidEnvVarError(EnvGateError):
     """Raised when an environment variable has an invalid value.
 
-    For list types, multiple items may be invalid - ``items_info``
-    carries a list of ``(index, raw_item)`` tuples, and the error
-    message lists each one.
+    Covers two failure modes:
+
+    - Type coercion failure: the raw string can't be converted to the
+      requested type. For list types, multiple items may be invalid —
+      ``items_info`` carries a list of ``(index, raw_item)`` tuples.
+    - Validator failure: the value passed type coercion but was
+      rejected by a user-supplied ``validator`` callable. ``reason``
+      carries the message from the validator's exception.
 
     Attributes:
         var_name: The name of the environment variable.
@@ -52,6 +57,8 @@ class InvalidEnvVarError(EnvGateError):
         expected_type: The type that was expected.
         items_info: For list types, a list of ``(index, raw_item)``
             for each invalid item. ``None`` for scalars.
+        reason: Message from a validator failure. ``None`` when the
+            error is a type coercion failure.
 
     Examples:
         Scalar invalid value:
@@ -68,6 +75,14 @@ class InvalidEnvVarError(EnvGateError):
             # "str(error) lists both invalid items with their indices
             #       - item at index 1: 'abc',
             #       - item at index 3: 'xyz'"
+
+        Validator failure:
+            error = InvalidEnvVarError(
+                "PORT", "80", "int",
+                reason="must be in [1024, 65535]",
+            )
+            str(error)
+            # "Environment variable 'PORT' has invalid value '80': must be in [1024, 65535]"
     """
 
     def __init__(
@@ -76,13 +91,20 @@ class InvalidEnvVarError(EnvGateError):
         value: str,
         expected_type: str,
         items_info: list[tuple[int, str]] | None = None,
+        reason: str | None = None,
     ) -> None:
         self.var_name = var_name
         self.value = value
         self.expected_type = expected_type
         self.items_info = items_info
+        self.reason = reason
 
-        if items_info:
+        if reason is not None:
+            msg = (
+                f"Environment variable '{var_name}' has invalid value "
+                f"'{value}': {reason}"
+            )
+        elif items_info:
             details = "\n".join(
                 f"    - item at index {idx}: '{raw_item}'"
                 for idx, raw_item in items_info
