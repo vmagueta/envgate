@@ -310,3 +310,159 @@ class TestListType:
     def test_list_value_wins_over_default(self, monkeypatch):
         monkeypatch.setenv("TAGS", "a,b")
         assert get_env("TAGS", type="list", default=["x", "y"]) == ["a", "b"]
+
+
+class TestValidator:
+    """Tests for issue #6 — custom validators."""
+
+    def test_validator_passes_value_through(self, monkeypatch):
+        monkeypatch.setenv("PORT", "8080")
+
+        def in_range(p):
+            if not (1024 <= p <= 65535):
+                raise ValueError("must be in [1024, 65535]")
+
+        assert get_env("PORT", type="int", validator=in_range) == 8080
+
+    def test_validator_failure_raises_invalid_env_var_error(self, monkeypatch):
+        monkeypatch.setenv("PORT", "80")
+
+        def in_range(p):
+            if not (1024 <= p <= 65535):
+                raise ValueError("must be in [1024, 65535]")
+
+        with pytest.raises(InvalidEnvVarError) as exc_info:
+            get_env("PORT", type="int", validator=in_range)
+        assert exc_info.value.var_name == "PORT"
+        assert exc_info.value.reason == "must be in [1024, 65535]"
+
+    def test_validator_error_message_uses_reason(self, monkeypatch):
+        monkeypatch.setenv("PORT", "80")
+
+        def in_range(p):
+            raise ValueError("must be in [1024, 65535]")
+
+        with pytest.raises(InvalidEnvVarError, match="must be in"):
+            get_env("PORT", type="int", validator=in_range)
+
+    def test_validator_receives_coerced_value(self, monkeypatch):
+        """Validator runs after type coercion — sees ``int``, not ``str``."""
+        monkeypatch.setenv("PORT", "8080")
+        seen: list[object] = []
+
+        def capture(value):
+            seen.append(value)
+
+        get_env("PORT", type="int", validator=capture)
+        assert seen == [8080]
+        assert isinstance(seen[0], int)
+
+    def test_validator_runs_on_default(self):
+        """A default that violates the validator surfaces as a schema bug."""
+
+        def positive(n):
+            if n <= 0:
+                raise ValueError("must be positive")
+
+        with pytest.raises(InvalidEnvVarError) as exc_info:
+            get_env("PORT", type="int", default=0, validator=positive)
+        assert exc_info.value.reason == "must be positive"
+
+    def test_validator_skipped_when_optional_and_absent(self):
+        """Optional var, no default, var absent → None, validator not invoked."""
+        calls: list[object] = []
+
+        def boom(value):
+            calls.append(value)
+            raise RuntimeError("should never run")
+
+        assert get_env("PORT", required=False, validator=boom) is None
+        assert calls == []
+
+    def test_validator_skipped_when_coercion_fails(self, monkeypatch):
+        """Coercion failure already explains the problem — don't run validator."""
+        monkeypatch.setenv("PORT", "abc")
+        calls: list[object] = []
+
+        def boom(value):
+            calls.append(value)
+            raise RuntimeError("should never run")
+
+        with pytest.raises(InvalidEnvVarError) as exc_info:
+            get_env("PORT", type="int", validator=boom)
+        # The error is the coercion error, not the validator error.
+        assert exc_info.value.reason is None
+        assert calls == []
+
+    def test_validator_accepts_any_exception_type(self, monkeypatch):
+        """Validators can raise any exception, not only ``ValueError``."""
+        monkeypatch.setenv("HOST", "localhost")
+
+        def picky(value):
+            raise TypeError("type-erroring on purpose")
+
+        with pytest.raises(InvalidEnvVarError) as exc_info:
+            get_env("HOST", validator=picky)
+        assert exc_info.value.reason == "type-erroring on purpose"
+
+    def test_validator_with_list_receives_list(self, monkeypatch):
+        """For list types, validator receives the parsed list (not the raw string)."""
+        monkeypatch.setenv("PORTS", "8000,8001,8002")
+
+        def all_in_range(ports):
+            for p in ports:
+                if not (1024 <= p <= 65535):
+                    raise ValueError(f"port {p} out of range")
+
+        assert get_env("PORTS", type="list[int]", validator=all_in_range) == [
+            8000,
+            8001,
+            8002,
+        ]
+
+    def test_validate_collects_validator_errors(self, monkeypatch):
+        """Validator failures join the collective ``ValidationError`` like the rest."""
+        monkeypatch.setenv("PORT", "80")
+        monkeypatch.setenv("HOST", "localhost")
+
+        def in_range(p):
+            if not (1024 <= p <= 65535):
+                raise ValueError("must be in [1024, 65535]")
+
+        def not_localhost(h):
+            if h == "localhost":
+                raise ValueError("must not be localhost")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate(
+                {
+                    "PORT": {"type": "int", "validator": in_range},
+                    "HOST": {"type": "str", "validator": not_localhost},
+                }
+            )
+        errors = exc_info.value.errors
+        assert len(errors) == 2
+        assert all(isinstance(e, InvalidEnvVarError) for e in errors)
+        assert {e.reason for e in errors} == {
+            "must be in [1024, 65535]",
+            "must not be localhost",
+        }
+
+    def test_validator_mixes_with_other_error_types(self, monkeypatch):
+        """A schema with missing + invalid + validator-rejected vars: all reported."""
+        monkeypatch.setenv("PORT", "abc")  # coercion fail
+        monkeypatch.setenv("HOST", "localhost")  # validator fail
+
+        def not_localhost(h):
+            if h == "localhost":
+                raise ValueError("must not be localhost")
+
+        with pytest.raises(ValidationError) as exc_info:
+            validate(
+                {
+                    "DB_URL": {"type": "str"},  # missing
+                    "PORT": {"type": "int"},  # invalid
+                    "HOST": {"type": "str", "validator": not_localhost},  # rejected
+                }
+            )
+        assert len(exc_info.value.errors) == 3
