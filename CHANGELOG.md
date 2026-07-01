@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 
 
+## [0.7.0] - 2026-07-01
+
+### Added
+- `load_env()` — loads a dotenv-style file into `os.environ` (issue #7).
+  Call it before `validate()` so the schema sees the file's values.
+  Stdlib only, no new dependencies.
+- `EnvFileError` exception, raised when a `.env` file exists but has a
+  line envgate can't parse (no `=` separator, or an empty variable name).
+
+### Behavior notes
+- **Existing environment variables always win.** A key already present
+  in `os.environ` is never overwritten (dotenv convention: real env
+  values from CI/containers/systemd outrank a local file). There is no
+  `override` flag yet — it can be added later without breaking this.
+- The return value is the **full parsed contents of the file**, mapping
+  each name to its raw string value, regardless of what actually landed
+  in `os.environ`. Useful for logging or diffing what a file *would* set.
+- A **missing file is a silent no-op** — returns `{}` and does nothing.
+  A file that exists but is malformed raises `EnvFileError`: silently
+  swallowing a broken config line is the bug envgate exists to prevent.
+- Parsing: blank lines and full-line `#` comments are skipped (inline
+  comments are **not** stripped — `#` is legal in URLs and tokens); a
+  leading `export ` is tolerated; values split on the first `=`; a single
+  pair of surrounding quotes is removed (whitespace inside is preserved);
+  no interpolation is performed.
+
 ## [0.6.0] - 2026-05-11
 
 ### Added
