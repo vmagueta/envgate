@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 
 
+## [1.0.0] - 2026-07-01
+
+First stable release. The public API — `get_env`, `validate`, `load_env`,
+and the exception hierarchy (`EnvGateError`, `MissingEnvVarError`,
+`InvalidEnvVarError`, `EnvFileError`, `ValidationError`) — is now frozen.
+From here on, any breaking change requires a major version bump.
+
+### Added
+- `override` parameter on `load_env()` (keyword-only, default `False`).
+  With the default, existing environment variables win and the file only
+  fills in absent keys. Pass `override=True` to make the file's values
+  replace matching keys already in `os.environ` — useful when a `.env`
+  is meant to be the source of truth (e.g. test fixtures).
+
+### Changed
+- Development status promoted from Alpha to Production/Stable.
+
 ## [0.7.0] - 2026-07-01
 
 ### Added

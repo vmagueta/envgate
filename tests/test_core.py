@@ -610,3 +610,27 @@ class TestLoadEnv:
             "DATABASE_URL": "postgres://localhost/app",
             "PORT": 5432,
         }
+
+    def test_override_false_keeps_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PORT", "8080")
+        path = self._write(tmp_path, "PORT=5432\n")
+        load_env(path, override=False)
+        assert os.environ["PORT"] == "8080"
+
+    def test_override_true_replaces_existing(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PORT", "8080")
+        path = self._write(tmp_path, "PORT=5432\n")
+        result = load_env(path, override=True)
+        assert result == {"PORT": "5432"}
+        assert os.environ["PORT"] == "5432"
+
+    def test_override_true_still_sets_absent_keys(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("NEW_VAR", raising=False)
+        path = self._write(tmp_path, "NEW_VAR=hello\n")
+        load_env(path, override=True)
+        assert os.environ["NEW_VAR"] == "hello"
+
+    def test_override_is_keyword_only(self, tmp_path):
+        path = self._write(tmp_path, "KEY=value\n")
+        with pytest.raises(TypeError):
+            load_env(path, True)  # noqa: FBT003 — positional override must fail
