@@ -110,8 +110,10 @@ PORT=5432
 export DEBUG="true"
 ```
 
-- **Real environment variables always win.** A key already set in the
-  environment (CI, containers, systemd) is never overwritten by the file.
+- **Real environment variables win by default.** A key already set in the
+  environment (CI, containers, systemd) is not overwritten by the file.
+  Pass `load_env(override=True)` to flip this and let the file's values
+  replace what's already there — handy for test fixtures.
 - **A missing file is a silent no-op** — handy in production, where you
   rely on real environment variables and ship no `.env`. A file that
   *exists* but has a broken line raises `EnvFileError`.

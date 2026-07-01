@@ -1,6 +1,6 @@
 [project]
 name = "envgate"
-version = "0.7.0"
+version = "1.0.0"
 description = "A minimal Python library to validate environment variables at startup. Zero dependencies."
 readme = "README.md"
 authors = [
@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = []
 keywords = ["environment", "validation", "env", "config", "startup"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

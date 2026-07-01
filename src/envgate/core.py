@@ -320,7 +320,11 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
+def load_env(
+    path: str | os.PathLike[str] = ".env",
+    *,
+    override: bool = False,
+) -> dict[str, str]:
     """Load variables from a ``.env`` file into ``os.environ``.
 
     Reads a dotenv-style file and copies each entry into the process
@@ -331,11 +335,13 @@ def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
         load_env()                 # .env → os.environ
         config = validate(SCHEMA)  # reads os.environ as usual
 
-    **Existing environment variables always win.** A key already present
-    in ``os.environ`` is never overwritten, matching the dotenv
+    **By default, existing environment variables win.** A key already
+    present in ``os.environ`` is not overwritten, matching the dotenv
     convention that real environment values (CI, containers, systemd)
-    outrank a local file. There is intentionally no ``override`` flag
-    yet — it can be added later without breaking this contract.
+    outrank a local file. Pass ``override=True`` to flip this — the
+    file's values then replace whatever is already in the environment,
+    useful when a ``.env`` is the intended source of truth (e.g. a test
+    fixture that must win over an inherited shell).
 
     The return value is the *full* parsed contents of the file, exactly
     as written, regardless of what actually landed in ``os.environ``.
@@ -359,6 +365,10 @@ def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
         path: Path to the ``.env`` file. Defaults to ``".env"`` in the
             current working directory. A missing file is **not** an
             error — the function returns an empty dict and does nothing.
+        override: When ``False`` (default), existing environment
+            variables are preserved and the file only fills in keys that
+            are absent. When ``True``, the file's values overwrite any
+            matching keys already in ``os.environ``.
 
     Returns:
         A dict of every variable parsed from the file, mapping name to
@@ -377,6 +387,9 @@ def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
         Load a specific file and inspect what it declared:
             declared = load_env("config/staging.env")
             # declared == {"DATABASE_URL": "postgres://...", "PORT": "5432"}
+
+        Let the file win over the current environment:
+            load_env("test.env", override=True)  # file values replace existing
 
         Missing file is a silent no-op:
             load_env("does-not-exist.env")  # returns {}, os.environ untouched
@@ -410,8 +423,12 @@ def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
 
         parsed[key] = _strip_quotes(value.strip())
 
-    # Existing environment values win — setdefault never overwrites.
-    for key, value in parsed.items():
-        os.environ.setdefault(key, value)
+    if override:
+        # File wins — replace whatever is already in the environment.
+        os.environ.update(parsed)
+    else:
+        # Existing environment values win — setdefault never overwrites.
+        for key, value in parsed.items():
+            os.environ.setdefault(key, value)
 
     return parsed
