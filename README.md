@@ -84,6 +84,44 @@ envgate.exceptions.ValidationError: Environment validation failed:
     - Environment variable 'LOG_LEVEL' has invalid value 'verbose': must be one of debug|info|warning|error
 ```
 
+## Loading a `.env` file
+
+For local development, load variables from a `.env` file before validating.
+`load_env()` copies the file's entries into `os.environ`, so `validate()`
+picks them up with no extra wiring:
+
+```python
+from envgate import load_env, validate
+
+load_env()  # reads ./.env into os.environ (defaults to ".env")
+
+config = validate({
+    "DATABASE_URL": {"type": "str"},
+    "PORT": {"type": "int", "default": 8000},
+})
+```
+
+Given a `.env` like:
+
+```
+# database
+DATABASE_URL=postgres://localhost/app
+PORT=5432
+export DEBUG="true"
+```
+
+- **Real environment variables always win.** A key already set in the
+  environment (CI, containers, systemd) is never overwritten by the file.
+- **A missing file is a silent no-op** — handy in production, where you
+  rely on real environment variables and ship no `.env`. A file that
+  *exists* but has a broken line raises `EnvFileError`.
+- `load_env()` returns a dict of everything it parsed from the file, so
+  you can log or inspect it without touching global state.
+
+Parsing is stdlib-only and deliberately simple: blank lines and full-line
+`#` comments are skipped, a leading `export ` is tolerated, surrounding
+quotes are stripped, and there's no shell-style interpolation.
+
 ## Supported Types
 
 | Type | Example values |

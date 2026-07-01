@@ -12,8 +12,9 @@ Example:
     >>> del os.environ["PORT"]
 """
 
-from envgate.core import get_env, validate
+from envgate.core import get_env, load_env, validate
 from envgate.exceptions import (
+    EnvFileError,
     EnvGateError,
     InvalidEnvVarError,
     MissingEnvVarError,
@@ -23,7 +24,9 @@ from envgate.exceptions import (
 
 __all__ = [
     "get_env",
+    "load_env",
     "validate",
+    "EnvFileError",
     "EnvGateError",
     "InvalidEnvVarError",
     "MissingEnvVarError",

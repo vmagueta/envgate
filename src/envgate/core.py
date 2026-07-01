@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import Any
 
 from envgate.exceptions import (
+    EnvFileError,
     EnvGateError,
     InvalidEnvVarError,
     MissingEnvVarError,
@@ -304,3 +305,113 @@ def validate(schema: dict[str, dict[str, Any]]) -> dict[str, Any]:
         raise ValidationError(errors)
 
     return result
+
+
+def _strip_quotes(value: str) -> str:
+    """Remove a single pair of matching surrounding quotes, if present.
+
+    ``'"foo"'`` → ``'foo'`` and ``"'foo'"`` → ``'foo'``. Whitespace
+    *inside* the quotes is preserved — quoting is how a user opts out of
+    the automatic value strip. Unquoted or mismatched values pass through
+    untouched. No escape sequences or interpolation are interpreted.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        return value[1:-1]
+    return value
+
+
+def load_env(path: str | os.PathLike[str] = ".env") -> dict[str, str]:
+    """Load variables from a ``.env`` file into ``os.environ``.
+
+    Reads a dotenv-style file and copies each entry into the process
+    environment, then returns everything it parsed. This is the "load"
+    half of the workflow — call it before :func:`validate` so the
+    schema sees the file's values:
+
+        load_env()                 # .env → os.environ
+        config = validate(SCHEMA)  # reads os.environ as usual
+
+    **Existing environment variables always win.** A key already present
+    in ``os.environ`` is never overwritten, matching the dotenv
+    convention that real environment values (CI, containers, systemd)
+    outrank a local file. There is intentionally no ``override`` flag
+    yet — it can be added later without breaking this contract.
+
+    The return value is the *full* parsed contents of the file, exactly
+    as written, regardless of what actually landed in ``os.environ``.
+    So a key the file sets to one value but the environment already
+    holds at another appears in the returned dict with the file's value
+    and in ``os.environ`` with the pre-existing one — handy for logging
+    or diffing what a file *would* set without inspecting global state.
+
+    Parsing rules (stdlib only, no interpolation):
+
+    - Blank lines and full-line comments (first non-space char ``#``)
+      are skipped. Inline trailing comments are **not** stripped —
+      ``#`` is a legal character in URLs, passwords, and tokens.
+    - A leading ``export `` prefix is tolerated and dropped.
+    - Each entry splits on the first ``=``. Whitespace around the key
+      and value is stripped.
+    - A single pair of matching surrounding quotes is removed from the
+      value; whitespace inside the quotes is preserved.
+
+    Args:
+        path: Path to the ``.env`` file. Defaults to ``".env"`` in the
+            current working directory. A missing file is **not** an
+            error — the function returns an empty dict and does nothing.
+
+    Returns:
+        A dict of every variable parsed from the file, mapping name to
+        its raw string value (before any type coercion). Empty if the
+        file does not exist.
+
+    Raises:
+        EnvFileError: If the file exists but contains a line that can't
+            be parsed — no ``=`` separator, or an empty variable name.
+
+    Examples:
+        Load the default ``.env`` and validate against a schema:
+            load_env()
+            config = validate({"DATABASE_URL": {}, "PORT": {"type": "int"}})
+
+        Load a specific file and inspect what it declared:
+            declared = load_env("config/staging.env")
+            # declared == {"DATABASE_URL": "postgres://...", "PORT": "5432"}
+
+        Missing file is a silent no-op:
+            load_env("does-not-exist.env")  # returns {}, os.environ untouched
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw_lines = f.readlines()
+    except FileNotFoundError:
+        return {}
+
+    parsed: dict[str, str] = {}
+    for line_number, raw_line in enumerate(raw_lines, start=1):
+        line = raw_line.rstrip("\r\n")
+        content = line.strip()
+
+        # Blank lines and full-line comments carry no assignment.
+        if not content or content.startswith("#"):
+            continue
+
+        # Tolerate a leading `export ` (common in files meant to be sourced).
+        if content.startswith("export "):
+            content = content[len("export ") :].lstrip()
+
+        if "=" not in content:
+            raise EnvFileError(str(path), line_number, line, "missing '=' separator")
+
+        key, _, value = content.partition("=")
+        key = key.strip()
+        if not key:
+            raise EnvFileError(str(path), line_number, line, "empty variable name")
+
+        parsed[key] = _strip_quotes(value.strip())
+
+    # Existing environment values win — setdefault never overwrites.
+    for key, value in parsed.items():
+        os.environ.setdefault(key, value)
+
+    return parsed

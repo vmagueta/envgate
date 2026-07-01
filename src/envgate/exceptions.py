@@ -122,6 +122,46 @@ class InvalidEnvVarError(EnvGateError):
         super().__init__(msg)
 
 
+class EnvFileError(EnvGateError):
+    """Raised when a ``.env`` file contains a malformed line.
+
+    A missing file is not an error — :func:`envgate.load_env` treats it
+    as "nothing to load" and skips silently. This exception is only for
+    a file that *exists* but has a line envgate can't parse (no ``=``
+    separator, or an empty variable name). Failing fast here is
+    deliberate: silently swallowing a broken config line is exactly the
+    class of bug envgate exists to prevent.
+
+    Attributes:
+        path: The path to the ``.env`` file.
+        line_number: The 1-based number of the offending line.
+        line: The raw content of the offending line.
+        reason: A short description of what's wrong with the line.
+
+    Examples:
+        >>> error = EnvFileError(".env", 3, "NOPE", "missing '=' separator")
+        >>> error.line_number
+        3
+        >>> print(error)
+        Malformed line 3 in '.env': missing '=' separator (got: 'NOPE')
+    """
+
+    def __init__(
+        self,
+        path: str,
+        line_number: int,
+        line: str,
+        reason: str,
+    ) -> None:
+        self.path = path
+        self.line_number = line_number
+        self.line = line
+        self.reason = reason
+        super().__init__(
+            f"Malformed line {line_number} in '{path}': {reason} (got: {line!r})"
+        )
+
+
 class ValidationError(EnvGateError):
     """Raised when multiple environment variables fail validation.
 

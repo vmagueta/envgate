@@ -1,9 +1,16 @@
 """Tests for envgate.core."""
 
+import os
+
 import pytest
 
-from envgate.core import get_env, validate
-from envgate.exceptions import InvalidEnvVarError, MissingEnvVarError, ValidationError
+from envgate.core import get_env, load_env, validate
+from envgate.exceptions import (
+    EnvFileError,
+    InvalidEnvVarError,
+    MissingEnvVarError,
+    ValidationError,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -466,3 +473,140 @@ class TestValidator:
                 }
             )
         assert len(exc_info.value.errors) == 3
+
+
+class TestLoadEnv:
+    """Tests for load_env — .env file loading."""
+
+    def _write(self, tmp_path, contents):
+        path = tmp_path / ".env"
+        path.write_text(contents, encoding="utf-8")
+        return path
+
+    def test_missing_file_is_silent_noop(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("ANYTHING", raising=False)
+        result = load_env(tmp_path / "does-not-exist.env")
+        assert result == {}
+
+    def test_loads_into_os_environ(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        path = self._write(tmp_path, "DATABASE_URL=postgres://localhost/app\n")
+        result = load_env(path)
+        assert result == {"DATABASE_URL": "postgres://localhost/app"}
+        assert os.environ["DATABASE_URL"] == "postgres://localhost/app"
+
+    def test_existing_env_var_wins(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PORT", "8080")
+        path = self._write(tmp_path, "PORT=5432\n")
+        result = load_env(path)
+        # Return dict reflects the file...
+        assert result == {"PORT": "5432"}
+        # ...but os.environ keeps the pre-existing value.
+        assert os.environ["PORT"] == "8080"
+
+    def test_return_reflects_file_not_environ(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PORT", "8080")
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        path = self._write(
+            tmp_path,
+            "DATABASE_URL=postgres://localhost/app\nPORT=5432\n",
+        )
+        result = load_env(path)
+        assert result == {
+            "DATABASE_URL": "postgres://localhost/app",
+            "PORT": "5432",
+        }
+        assert os.environ["DATABASE_URL"] == "postgres://localhost/app"
+        assert os.environ["PORT"] == "8080"
+
+    def test_blank_lines_and_comments_skipped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("A", raising=False)
+        monkeypatch.delenv("B", raising=False)
+        path = self._write(
+            tmp_path,
+            "# a comment\n\nA=1\n   # indented comment\nB=2\n",
+        )
+        result = load_env(path)
+        assert result == {"A": "1", "B": "2"}
+
+    def test_whitespace_around_key_and_value_stripped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KEY", raising=False)
+        path = self._write(tmp_path, "  KEY  =  value  \n")
+        result = load_env(path)
+        assert result == {"KEY": "value"}
+
+    def test_double_quotes_stripped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KEY", raising=False)
+        path = self._write(tmp_path, 'KEY="hello world"\n')
+        result = load_env(path)
+        assert result == {"KEY": "hello world"}
+
+    def test_single_quotes_stripped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KEY", raising=False)
+        path = self._write(tmp_path, "KEY='hello world'\n")
+        result = load_env(path)
+        assert result == {"KEY": "hello world"}
+
+    def test_whitespace_inside_quotes_preserved(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KEY", raising=False)
+        path = self._write(tmp_path, 'KEY="  spaced  "\n')
+        result = load_env(path)
+        assert result == {"KEY": "  spaced  "}
+
+    def test_hash_inside_value_not_treated_as_comment(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("URL", raising=False)
+        path = self._write(tmp_path, "URL=http://host/path#frag\n")
+        result = load_env(path)
+        assert result == {"URL": "http://host/path#frag"}
+
+    def test_export_prefix_tolerated(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("KEY", raising=False)
+        path = self._write(tmp_path, "export KEY=value\n")
+        result = load_env(path)
+        assert result == {"KEY": "value"}
+
+    def test_value_may_contain_equals(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("EXPR", raising=False)
+        path = self._write(tmp_path, "EXPR=a=b=c\n")
+        result = load_env(path)
+        assert result == {"EXPR": "a=b=c"}
+
+    def test_empty_value_allowed(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("EMPTY", raising=False)
+        path = self._write(tmp_path, "EMPTY=\n")
+        result = load_env(path)
+        assert result == {"EMPTY": ""}
+        assert os.environ["EMPTY"] == ""
+
+    def test_malformed_line_without_equals_raises(self, tmp_path):
+        path = self._write(tmp_path, "GOOD=1\nNOPE\n")
+        with pytest.raises(EnvFileError) as exc_info:
+            load_env(path)
+        assert exc_info.value.line_number == 2
+        assert "missing '=' separator" in str(exc_info.value)
+
+    def test_empty_key_raises(self, tmp_path):
+        path = self._write(tmp_path, "=value\n")
+        with pytest.raises(EnvFileError) as exc_info:
+            load_env(path)
+        assert exc_info.value.line_number == 1
+        assert "empty variable name" in str(exc_info.value)
+
+    def test_integrates_with_validate(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("PORT", raising=False)
+        path = self._write(
+            tmp_path,
+            "DATABASE_URL=postgres://localhost/app\nPORT=5432\n",
+        )
+        load_env(path)
+        config = validate(
+            {
+                "DATABASE_URL": {"type": "str"},
+                "PORT": {"type": "int"},
+            }
+        )
+        assert config == {
+            "DATABASE_URL": "postgres://localhost/app",
+            "PORT": 5432,
+        }
